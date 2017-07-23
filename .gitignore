@@ -1,0 +1,9 @@
+*
+!.gitignore
+!*.ml
+!*.mll
+!*.mly
+!Makefile
+!OCamlMakefile
+lexer.ml
+parser.ml
