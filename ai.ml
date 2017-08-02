@@ -87,10 +87,9 @@ let remnum bo =
 let isfinish bo = (remnum bo = 0)
 
 let iswin bo col = 
-	let tb = (Array.map (Array.map (fun x -> if x = 1 then 1 else if x = 2 then -1 else 0)) bo) in
+	let tb = (Array.map (Array.map (fun x -> if x = col then 1 else if x = (opcol col) then -1 else 0)) bo) in
 	let s = arrsum tb in
-	let w1 = if s > 0 then -1 else if s = 0 then 0 else 1 in
-		if col = 1 then w1 else w1 * -1
+		if s > 0 then 1000000 else if s = 0 then 0 else -1000000
 
 
 let rec yomikiri bo col lastpass : (move * int) = 
@@ -106,26 +105,34 @@ let rec yomikiri bo col lastpass : (move * int) =
 			if rw = 1 then (rh,rw) else 
 				let (_,ngw) = yomikiri nb (opcol col) false in
 				let nw = ngw * -1 in
-					if nw > rw then ((Mv(nha,nhb)),nw) else (rh,rw)) (Pass, -100) tbs
+					if nw > rw then ((Mv(nha,nhb)),nw) else (rh,rw)) (Pass, -10000000) tbs
 
 
 
 
+let cbo = Array.of_list (List.map Array.of_list [
+		[100;-10;30;10;10;30;-10;100];
+		[-10;-50;-3;-3;-3;-3;-50;-10];
+		[ 30; -3; 5; 5; 5; 5; -3; 30];
+		[ 10; -3; 5; 1; 1; 5; -3; 10];
+		[ 10; -3; 5; 1; 1; 5; -3; 10];
+		[ 30; -3; 5; 5; 5; 5; -3; 30];
+		[-10;-50;-3;-3;-3;-3;-50;-10];
+		[100;-10;30;10;10;30;-10;100]])
 
 
 let eval_board bo col = 
-	let cbo = [
-		[100;-50;30;10;10;30;-50;100];
-		[-50;-50;-3;-3;-3;-3;-50;-50];
-		[ 30; -3; 5; 5; 5; 5; -3; 30];
-		[ 10; -3; 5; 1; 1; 5; -3; 10];
-		[ 10; -3; 5; 1; 1; 5; -3; 10];
-		[ 30; -3; 5; 5; 5; 5; -3; 30];
-		[-50;-50;-3;-3;-3;-3;-50;-50];
-		[100;-50;30;10;10;30;-50;100]]
-	
-	res = ref 0
-	
+	let res = ref 0 in
+	for y=0 to 7 do 
+		for x=0 to 7 do
+			let p = cbo.(y).(x) in
+			let c = bo.(y+1).(x+1) in
+			res := (!res + (if c = col then p else if c = (opcol col) then -p else 0))
+		done
+	done;
+	(*print_board bo;
+	Printf.printf "col %s evalto %d\n" (if col = 2 then "black" else "white") !res;*)
+	!res
 
 
 
@@ -139,30 +146,48 @@ let rec dfs_read bo col d lastpass : (move * int) =
 		| [] -> 
 			(Pass,
 				if lastpass then iswin bo col else
-				let (_,res) = yomikiri bo (opcol col) true in res * -1)
+				let (_,res) = dfs_read bo (opcol col) d true in res * -1)
 		| _ -> 
 			List.fold_left (fun (rh,rw) -> fun ((nha,nhb),nb) -> 
-				if rw = 1 then (rh,rw) else 
-					let (_,ngw) = yomikiri nb (opcol col) false in
-					let nw = ngw * -1 in
-						if nw > rw then ((Mv(nha,nhb)),nw) else (rh,rw)) (Pass, -100) tbs
+				let (_,ngw) = dfs_read nb (opcol col) (d-1) false in
+				let nw = ngw * -1 in
+					if nw > rw then ((Mv(nha,nhb)),nw) else (rh,rw)) (Pass, -10000000) tbs
 
+
+let debug_board () = 
+  let board = Array.make_matrix 10 10 0 in 
+    for i=0 to 9 do 
+      board.(i).(0) <- 3 ;
+      board.(i).(9) <- 3 ;
+      board.(0).(i) <- 3 ;
+      board.(9).(i) <- 3 ;
+    done;
+    for y=1 to 8 do 
+    	for x=1 to 8 do
+    		board.(y).(x) <- (if y > 4 then 1 else 2);
+			done
+		done;
+		board.(1).(1) <- 0;
+    board 
 
 
 let debug () = 
-	let nb = init_board () in
-	let x = put nb (3,5) 1 true in
+	let nb = debug_board () in
 	print_board nb;
+	Printf.printf "white %d\n" (snd (yomikiri nb 1 false));
+	Printf.printf "black %d\n" (snd (yomikiri nb 2 false));
 	raise Not_found
 
 let ai_play bo col = 
 	(* debug (); *)
-	if remnum bo < 12 then let (res,_) = yomikiri bo col false in res else
-	let bs = enum_boards bo col in
-		match bs with
-		| [] -> Pass
-		| ((y,x),tbo) :: _ -> 
-			(* print_board tbo; *)
-			Mv (y,x)
+	print_board bo;
+	if remnum bo < 8 then 
+		let (res,t) = yomikiri bo col false in 
+		print_string (if t > 0 then "win\n" else if t < 0 then "lose\n" else "even");
+		res 
+	else
+		let (res,p) = dfs_read bo col 3 false in 
+		Printf.printf "point :: %d\n" p;
+		res
 
 
