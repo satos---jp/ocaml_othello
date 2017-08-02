@@ -58,10 +58,12 @@ let enum_boards bo col =
 	List.iter ( fun y -> 
 		List.iter ( fun x -> 
 			if put (!nbo) (y,x) col true then
-				(res := ((y,x),!nbo) :: !res;
+				(res := (Mv(y,x),!nbo) :: !res;
 				nbo := board_copy bo)
 			else ()) (range 1 9)) (range 1 9);
-		!res
+	match (!res) with
+	| [] -> [(Pass,bo)]
+	| _ -> !res
 
 let init_board () = 
   let board = Array.make_matrix 10 10 0 in 
@@ -92,20 +94,21 @@ let iswin bo col =
 		if s > 0 then 1000000 else if s = 0 then 0 else -1000000
 
 
+
+
+let inf = 10000000
+
 let rec yomikiri bo col lastpass : (move * int) = 
 	if isfinish bo then (Pass,iswin bo col) else
 	let tbs = enum_boards bo col in
 	match tbs with
-	| [] -> 
-		(Pass,
-			if lastpass then iswin bo col else
-			let (_,res) = yomikiri bo (opcol col) true in res * -1)
+	| [] -> raise (Failure "yomikiri fail")
 	| _ -> 
-		List.fold_left (fun (rh,rw) -> fun ((nha,nhb),nb) -> 
+		List.fold_left (fun (rh,rw) -> fun (nmv,nb) -> 
 			if rw = 1 then (rh,rw) else 
 				let (_,ngw) = yomikiri nb (opcol col) false in
 				let nw = ngw * -1 in
-					if nw > rw then ((Mv(nha,nhb)),nw) else (rh,rw)) (Pass, -10000000) tbs
+					if nw > rw then (nmv,nw) else (rh,rw)) (Pass, -inf) tbs
 
 
 
@@ -121,37 +124,66 @@ let cbo = Array.of_list (List.map Array.of_list [
 		[100;-10;30;10;10;30;-10;100]])
 
 
-let eval_board bo col = 
+(* バグの原因になるので、1にとってで評価する *)
+
+let eval_board bo = 
 	let res = ref 0 in
 	for y=0 to 7 do 
 		for x=0 to 7 do
 			let p = cbo.(y).(x) in
 			let c = bo.(y+1).(x+1) in
-			res := (!res + (if c = col then p else if c = (opcol col) then -p else 0))
+			res := (!res + (if c = 1 then p else if c = (opcol 1) then -p else 0))
 		done
 	done;
-	(*print_board bo;
-	Printf.printf "col %s evalto %d\n" (if col = 2 then "black" else "white") !res;*)
+	(*
+	print_board bo;
+	Printf.printf "col %s evalto %d\n" (if col = 2 then "black" else "white") !res;
+	*)
 	!res
 
+(*
+親ノードは、既にcutmax以上の値を得ている。
+cutmax以上の値ならば、どうせ親が諦めるのでcutしない
+*)
 
+exception Cut_ab
 
-let rec dfs_read bo col d lastpass : (move * int) = 
-	if isfinish bo then (Pass,iswin bo col) else
+(* 1はmaxを目指す
+   2はminを目指す *)
+
+let rec dfs_read bo col d lastpass cutmax cutmin : (move * int) = 
+	if isfinish bo then (Pass,(iswin bo 1)) else
 	if d = 0 then 
-		(Pass,eval_board bo col)
+		let rw = eval_board bo in
+		(* Printf.printf "remdep %d : cutmax %d cutmin %d col %d eval %d\n" d cutmax cutmin col rw; *)
+		(Pass,rw)
 	else
 		let tbs = enum_boards bo col in
 		match tbs with
-		| [] -> 
-			(Pass,
-				if lastpass then iswin bo col else
-				let (_,res) = dfs_read bo (opcol col) d true in res * -1)
+		| [] -> raise (Failure "dfs_read fail")
 		| _ -> 
-			List.fold_left (fun (rh,rw) -> fun ((nha,nhb),nb) -> 
-				let (_,ngw) = dfs_read nb (opcol col) (d-1) false in
-				let nw = ngw * -1 in
-					if nw > rw then ((Mv(nha,nhb)),nw) else (rh,rw)) (Pass, -10000000) tbs
+			let rw = ref (if col = 1 then (-inf) else inf) in
+			let rh = ref Pass in
+			try
+				List.iter (fun (nh,nb) -> 
+					if col = 1 then (
+						let nw = snd (dfs_read nb (opcol col) (d-1) false cutmax (!rw)) in
+							if nw <= (!rw) then () else (
+								rw := nw; rh := nh;
+								(* Printf.printf "remdep %d : update %d %d\n" d nw !rw; *)
+								if nw >= cutmax then raise Cut_ab else ()))
+					else (
+						let nw = snd (dfs_read nb (opcol col) (d-1) false (!rw) cutmin) in
+							if nw >= (!rw) then () else (
+								rw := nw; rh := nh; 
+								(* Printf.printf "remdep %d : update %d %d\n" d nw !rw; *)
+								if nw <= cutmin then raise Cut_ab else ()))
+				) tbs;
+				raise Cut_ab
+			with
+				Cut_ab -> 
+					(* Printf.printf "remdep %d : cutmax %d cutmin %d col %d eval %d\n" d cutmax cutmin col !rw; *)
+					(!rh,!rw) 
 
 
 let debug_board () = 
@@ -181,12 +213,12 @@ let debug () =
 let ai_play bo col = 
 	(* debug (); *)
 	print_board bo;
-	if remnum bo < 8 then 
+	if remnum bo < 6 then (* スタックオーバーフローするのやばそう *)
 		let (res,t) = yomikiri bo col false in 
 		print_string (if t > 0 then "win\n" else if t < 0 then "lose\n" else "even");
 		res 
 	else
-		let (res,p) = dfs_read bo col 3 false in 
+		let (res,p) = dfs_read bo col 8 false inf (-inf) in 
 		Printf.printf "point :: %d\n" p;
 		res
 
