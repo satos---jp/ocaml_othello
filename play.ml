@@ -62,7 +62,6 @@ let doMove board com color =
 	let _  = List.map (fun (ii,jj) -> board.(ii).(jj) <- color) ms in 
 	let _  = board.(i).(j) <- color in 
 	  board 
-    | _ -> board 
 
 let mix xs ys =
   List.concat (List.map (fun x -> List.map (fun y -> (x,y)) ys) xs)

@@ -7,3 +7,5 @@
 !OCamlMakefile
 lexer.ml
 parser.ml
+board.mli
+
