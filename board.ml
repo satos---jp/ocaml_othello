@@ -50,7 +50,7 @@ let enum_puttable bo c =
 	let res = ref zero in
 	List.iter (fun f -> 
 		let nb = ref (logand (f mb) ob) in (* まず、隣が白。 *) 
-		print_hands (!res);
+		(* print_hands (!res); *)
 		(for i=1 to 6 do
 			let tb = f (!nb) in
 			res := logor (!res) (logand wt tb); (* 空白なら置ける *)
@@ -160,17 +160,59 @@ let calc_end () =
 	Printf.printf "eval %d times\n" (!eval_cnt);
 	eval_cnt := 0
 
-let eval_board bo c = 
-	eval_cnt := (!eval_cnt) + 1;
-	let col = if c then fst else snd in
-	let opc = if c then snd else fst in
+
+let to_kak b =
+	let r1 = ref zero in
+	let no = ref (of_int 0xff) in
+	for i=1 to 8 do
+		no := logand (!no) b;
+		r1 := logor (!no) (!r1);
+		no := shift_left (!no) 8
+	done;
+	no := shift_left (of_int 0xff) 56;
+	for i=1 to 8 do
+		no := logand (!no) b;
+		r1 := logor (!no) (!r1);
+		no := shift_right_logical (!no) 8
+	done;
+	let res = ref zero in
+	no := of_int 0x0101_0101_0101_0101;
+	for i=1 to 8 do
+		no := logand (!no) (!r1);
+		res := logor (!no) (!res);
+		no := shift_left (!no) 1
+	done;
+	no := shift_left (of_int 0x0101_0101_0101_0101) 7;
+	for i=1 to 8 do
+		no := logand (!no) (!r1);
+		res := logor (!no) (!res);
+		no := shift_right_logical (!no) 1
+	done;
+	!res
+	
+
+
+let eval_pa bo = 
+	let mb = fst bo in
 	let rec f b eb acc = 
 		match eb with
 		| [] -> acc
 		| x :: xs -> 
 			f (shift_right_logical b 1) xs ((x * (to_int (logand b one)))+acc)
 	in
-		(f (col bo) evb 0) - (f (opc bo) evb 0)
+	let mbk = to_kak mb in
+	let nk = logxor mbk mb in
+	let r1 = (f nk evb 0) in
+	let r2 = (popcount mbk) * 25 in
+	let r3 = (max (10-(popcount (enum_puttable bo true))) 0) * (-10) in
+		r1 + r2 + r3
+	
+let eval_board bo c = 
+	eval_cnt := (!eval_cnt) + 1;
+	let col = if c then fst else snd in
+	let opc = if c then snd else fst 
+	in
+		(eval_pa ((col bo),(opc bo))) - (eval_pa ((opc bo),(col bo)))
 
 
 
